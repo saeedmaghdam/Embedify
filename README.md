@@ -54,7 +54,7 @@ Requests to `Embedify` must follow this JSON structure:
 ```json
 {
   "requestId": "unique-request-id",
-  "type": "code",         // "code" for code snippets, "query" for user queries
+  "type": "code",
   "content": "public void InitializeDatabase() { ... }"
 }
 ```
