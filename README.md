@@ -53,7 +53,7 @@ Requests to `Embedify` must follow this JSON structure:
 
 ```json
 {
-  "requestId": "unique-request-id",
+  "requestId": "517b83f4-f711-4a48-9c82-2fa5703f238e",
   "type": "code",
   "content": "public void InitializeDatabase() { ... }"
 }
@@ -69,8 +69,8 @@ The embedding results published back to RabbitMQ follow this format:
 
 ```json
 {
-  "requestId": "unique-request-id",
-  "embedding": [0.12, -0.34, ..., 0.56]  // Embedding vector
+  "requestId": "74da6b79-a007-4a92-864a-4032fc404323",
+  "embedding": [0.12, -0.34, ..., 0.56]
 }
 ```
 
