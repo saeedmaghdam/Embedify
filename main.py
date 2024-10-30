@@ -38,11 +38,36 @@ def connect_to_rabbitmq():
 
     return channel
 
-def generate_embedding(code_snippet):
-    inputs = tokenizer(code_snippet, return_tensors="pt")
-    with torch.no_grad():
-        embeddings = model(**inputs).last_hidden_state.mean(dim=1).squeeze().tolist()
-    return embeddings
+def generate_embedding(content, requestType):
+    chunk_size = 512
+    embeddings = []
+
+    if requestType == "query":
+        # Process query as a single input with truncation for natural language queries
+        inputs = tokenizer(content, return_tensors="pt", max_length=128, truncation=True)
+        with torch.no_grad():
+            embedding = model(**inputs).last_hidden_state[:, 0, :].squeeze()
+            embeddings.append(embedding)
+    else:  # Code
+        # Split code content into chunks of max 512 tokens
+        tokens = tokenizer(content, return_tensors="pt", padding=True, truncation=True, max_length=chunk_size).input_ids
+        num_chunks = tokens.size(1) // chunk_size + (1 if tokens.size(1) % chunk_size > 0 else 0)
+
+        for i in range(num_chunks):
+            start_idx = i * chunk_size
+            end_idx = start_idx + chunk_size
+            chunk_tokens = tokens[:, start_idx:end_idx]
+
+            with torch.no_grad():
+                # Compute embedding for each chunk using [CLS] token pooling
+                chunk_embedding = model(chunk_tokens).last_hidden_state[:, 0, :].squeeze()
+                embeddings.append(chunk_embedding)
+
+    # Combine embeddings by averaging (or other pooling strategy)
+    final_embedding = torch.stack(embeddings).mean(dim=0)
+    final_embedding = final_embedding.tolist()
+
+    return final_embedding
 
 def on_message(channel, method, properties, body):
     message = json.loads(body)
@@ -55,7 +80,7 @@ def on_message(channel, method, properties, body):
         return
 
     startTime = time.time()
-    embedding = generate_embedding(content)
+    embedding = generate_embedding(content, requestType)
     durationInMs = round((time.time() - startTime) * 1000, 2)
     result = {
         "requestId": message.get("requestId"),
