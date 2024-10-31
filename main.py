@@ -3,6 +3,7 @@ import time
 import pika
 import json
 import torch
+import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel
 
 tokenizer = AutoTokenizer.from_pretrained("microsoft/codebert-base")
@@ -40,6 +41,7 @@ def connect_to_rabbitmq():
 
 def generate_embedding(content, requestType):
     chunk_size = 512
+    overlap = 50  # Optional overlap for continuity across chunks
     embeddings = []
 
     if requestType == "query":
@@ -47,26 +49,32 @@ def generate_embedding(content, requestType):
         inputs = tokenizer(content, return_tensors="pt", max_length=128, truncation=True)
         with torch.no_grad():
             embedding = model(**inputs).last_hidden_state[:, 0, :].squeeze()
+            # Normalize the query embedding
+            embedding = F.normalize(embedding, p=2, dim=0)
             embeddings.append(embedding)
     else:  # Code
-        # Split code content into chunks of max 512 tokens
+        # Split code content into chunks of max 512 tokens with optional overlap
         tokens = tokenizer(content, return_tensors="pt", padding=True, truncation=True, max_length=chunk_size).input_ids
         num_chunks = tokens.size(1) // chunk_size + (1 if tokens.size(1) % chunk_size > 0 else 0)
 
         for i in range(num_chunks):
-            start_idx = i * chunk_size
+            start_idx = max(i * chunk_size - overlap, 0)
             end_idx = start_idx + chunk_size
             chunk_tokens = tokens[:, start_idx:end_idx]
 
             with torch.no_grad():
                 # Compute embedding for each chunk using [CLS] token pooling
                 chunk_embedding = model(chunk_tokens).last_hidden_state[:, 0, :].squeeze()
+                # Normalize each chunk embedding
+                chunk_embedding = F.normalize(chunk_embedding, p=2, dim=0)
                 embeddings.append(chunk_embedding)
 
-    # Combine embeddings by averaging (or other pooling strategy)
-    final_embedding = torch.stack(embeddings).mean(dim=0)
-    final_embedding = final_embedding.tolist()
+    # Combine embeddings using max pooling (alternative to averaging)
+    final_embedding = torch.stack(embeddings).max(dim=0)[0]
+    # Normalize the final combined embedding
+    final_embedding = F.normalize(final_embedding, p=2, dim=0).tolist()
 
+    print(f"Generated embedding shape for {requestType}: {len(final_embedding)}")
     return final_embedding
 
 def on_message(channel, method, properties, body):
